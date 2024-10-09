@@ -3,6 +3,7 @@ module app
 go 1.22.5
 
 require (
+	github.com/brianvoe/gofakeit/v6 v6.28.0
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-sql-driver/mysql v1.8.1
