@@ -3,11 +3,11 @@ package main
 import (
 	"app/mysql"
 	"app/redisClient"
+	"app/seed"
 	"app/typefile"
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -32,14 +32,48 @@ func main() {
 
 	// db.AutoMigrate().DropTable(&typefile.Region{}, &typefile.User{}, &typefile.Team{}, &typefile.GameEntry{}, &typefile.GameScore{}, &typefile.Game{})
 	db.AutoMigrate(&typefile.Region{}, &typefile.User{}, &typefile.Team{}, &typefile.GameEntry{}, &typefile.GameScore{}, &typefile.Game{})
-	mysql.Seed(db)
+	seed.Seed(db, rdb)
 	defer db.Close()
 
 	r := gin.Default()
 
 	r.GET("/", func(c *gin.Context) {
+		resultGame1, err1 := rdb.ZRevRangeWithScores(ctx, "game1", 0, -1).Result()
+		resultGame2, err2 := rdb.ZRevRangeWithScores(ctx, "game2", 0, -1).Result()
+		resultGame3, err3 := rdb.ZRevRangeWithScores(ctx, "game3", 0, -1).Result()
+		resultGame4, err4 := rdb.ZRevRangeWithScores(ctx, "game4", 0, -1).Result()
+		resultTotal, errTotal := rdb.ZRevRangeWithScores(ctx, "total", 0, -1).Result()
+		if err1 != nil {
+			c.JSON(400, gin.H{
+				"message": "error",
+			})
+		}
+		if err2 != nil {
+			c.JSON(400, gin.H{
+				"message": "error",
+			})
+		}
+		if err3 != nil {
+			c.JSON(400, gin.H{
+				"message": "error",
+			})
+		}
+		if err4 != nil {
+			c.JSON(400, gin.H{
+				"message": "error",
+			})
+		}
+		if errTotal != nil {
+			c.JSON(400, gin.H{
+				"message": "error",
+			})
+		}
 		c.JSON(200, gin.H{
-			"message": "Hello, World!",
+			"resultGame1": resultGame1,
+			"resultGame2": resultGame2,
+			"resultGame3": resultGame3,
+			"resultGame4": resultGame4,
+			"resultTotal": resultTotal,
 		})
 	})
 
@@ -145,8 +179,26 @@ func main() {
 				Member: team.Uuid,
 			}).Err()
 			if err != nil {
-				log.Fatalf("Could not set key: %v", err)
+				c.JSON(500, gin.H{"error": "redis error" + err.Error()})
+				return
 			}
+		}
+
+		totalScore := uint(0)
+		totalHelperCount := uint(0)
+		for _, entry := range json.Entries {
+			totalScore += entry.Score + entry.HelpScore
+			totalHelperCount += entry.HelperCount
+		}
+
+		customScore := calculateCustomScore(totalScore, totalHelperCount, currentTime)
+		err := rdb.ZAdd(ctx, "total", redis.Z{
+			Score:  customScore,
+			Member: team.Uuid,
+		}).Err()
+		if err != nil {
+			c.JSON(500, gin.H{"error": "redis error" + err.Error()})
+			return
 		}
 
 		c.JSON(200, "success")
@@ -172,22 +224,16 @@ func main() {
 			totalScore += entry.GameScore.Score + entry.GameScore.HelpScore
 		}
 
-		var teamResults []struct {
-			TeamID     uint
-			TotalScore uint
+		resultTotal, errTotal := rdb.ZRevRangeWithScores(ctx, "total", 0, -1).Result()
+		if errTotal != nil {
+			c.JSON(400, gin.H{
+				"message": "error",
+			})
 		}
 
-		db.Table("teams").
-			Select("teams.id AS team_id, SUM(game_scores.score + game_scores.help_score) as total_score").
-			Joins("JOIN game_entries ON teams.id = game_entries.team_id").
-			Joins("JOIN game_scores ON game_entries.game_score_id = game_scores.id").
-			Group("teams.id").
-			Order("total_score DESC").
-			Find(&teamResults)
-
-		var teamRank uint
-		for i, result := range teamResults {
-			if result.TeamID == team.ID {
+		teamRank := uint(0)
+		for i, result := range resultTotal {
+			if result.Member == team.Uuid {
 				teamRank = uint(i + 1)
 				break
 			}
@@ -195,21 +241,16 @@ func main() {
 
 		gameRanks := []typefile.GameRank{}
 		for _, entry := range team.GameEntries {
-			var gameRankings []struct {
-				TeamID uint
-				Score  uint
+			key := "game" + fmt.Sprint(entry.GameID)
+			resultGame, err := rdb.ZRevRangeWithScores(ctx, key, 0, -1).Result()
+			if err != nil {
+				c.JSON(400, gin.H{
+					"message": "error",
+				})
 			}
-			db.Table("teams").
-				Select("teams.id AS team_id, game_scores.score + game_scores.help_score AS score").
-				Joins("JOIN game_entries ON teams.id = game_entries.team_id").
-				Joins("JOIN game_scores ON game_entries.game_score_id = game_scores.id").
-				Where("game_entries.game_id = ?", entry.GameID).
-				Order("score DESC").
-				Find(&gameRankings)
-
 			var Rank uint
-			for i, result := range gameRankings {
-				if result.TeamID == team.ID {
+			for i, result := range resultGame {
+				if result.Member == team.Uuid {
 					Rank = uint(i + 1)
 					break
 				}
