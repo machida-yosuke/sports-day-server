@@ -2,19 +2,47 @@ package main
 
 import (
 	"app/mysql"
+	"app/redisClient"
 	"app/typefile"
+	"context"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
+	"time"
 
 	"github.com/bwmarrin/snowflake"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jinzhu/gorm"
 )
 
+func calculateCustomScore(score, participants uint, timestamp int64) float64 {
+	timeWeight := float64(timestamp) / 1000000000
+	return float64(score+participants) + timeWeight
+}
+
 func main() {
+	var ctx = context.Background()
+
 	db := mysql.SqlConnect()
+	rdb := redisClient.RedisConnect()
+
+	// rdb.Set(ctx, "test", "Hello, Redis!", 0)
+
+	// err1 := rdb.Set(ctx, "string", "Hello, Redis v9", 0).Err()
+	// if err1 != nil {
+	// 	log.Fatalf("Could not set key: %v", err1)
+	// }
+
+	// listVal := []string{"val1", "va2", "val3"}
+	// err2 := rdb.LPush(ctx, "array", listVal).Err()
+	// if err2 != nil {
+	// 	log.Fatalf("Could not set key: %v", err2)
+	// }
+
 	// db.AutoMigrate().DropTable(&typefile.Region{}, &typefile.User{}, &typefile.Team{}, &typefile.GameEntry{}, &typefile.GameScore{}, &typefile.Game{})
 	db.AutoMigrate(&typefile.Region{}, &typefile.User{}, &typefile.Team{}, &typefile.GameEntry{}, &typefile.GameScore{}, &typefile.Game{})
 	mysql.Seed(db)
@@ -23,8 +51,43 @@ func main() {
 	r := gin.Default()
 
 	r.GET("/", func(c *gin.Context) {
+		// resultString, err1 := rdb.Get(ctx, "string").Result()
+		// if err1 != nil {
+		// 	c.JSON(400, gin.H{
+		// 		"message": "error",
+		// 	})
+		// }
+
+		// resultArray, err2 := rdb.LRange(ctx, "array", 0, -1).Result()
+		// if err2 != nil {
+		// 	c.JSON(400, gin.H{
+		// 		"message": "error",
+		// 	})
+		// }
+
+		// resultSet, err3 := rdb.SMembers(ctx, "set").Result()
+		// if err3 != nil {
+		// 	c.JSON(400, gin.H{
+		// 		"message": "error",
+		// 	})
+		// }
+
+		// resultMysortedset, err4 := rdb.ZRevRangeWithScores(ctx, "mysortedset", 0, -1).Result()
+		// if err4 != nil {
+		// 	c.JSON(400, gin.H{
+		// 		"message": "error",
+		// 	})
+		// }
+
+		// c.JSON(200, gin.H{
+		// 	"resultString":      resultString,
+		// 	"resultArray":       resultArray,
+		// 	"resultSet":         resultSet,
+		// 	"resultMysortedset": resultMysortedset,
+		// })
+
 		c.JSON(200, gin.H{
-			"message": "Hello",
+			"message": "Hello, World!",
 		})
 	})
 
@@ -81,6 +144,7 @@ func main() {
 		})
 	})
 
+	// ゲーム結果の送信
 	r.POST("/teams/:uuid/result", func(c *gin.Context) {
 		var json typefile.ResultCreateJsonRequest
 
@@ -96,6 +160,8 @@ func main() {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
+
+		currentTime := time.Now().Unix()
 
 		for _, entry := range json.Entries {
 			gameScore := typefile.GameScore{
@@ -119,11 +185,22 @@ func main() {
 				c.JSON(500, gin.H{"error": err.Error()})
 				return
 			}
+
+			customScore := calculateCustomScore(entry.Score, uint(len(team.Users)), currentTime)
+			gameName := "game" + fmt.Sprint(entry.GameId)
+			err := rdb.ZAdd(ctx, gameName, redis.Z{
+				Score:  customScore,
+				Member: team.Uuid,
+			}).Err()
+			if err != nil {
+				log.Fatalf("Could not set key: %v", err)
+			}
 		}
 
 		c.JSON(200, "success")
 	})
 
+	// チームの結果取得
 	r.GET("/teams/:uuid/result", func(c *gin.Context) {
 		var team typefile.Team
 		teamResult := db.Preload("Users").Preload("Region").Preload("GameEntries.GameScore").Where("uuid = ?", c.Param("uuid")).First(&team)
@@ -206,6 +283,7 @@ func main() {
 		c.JSON(200, json)
 	})
 
+	// ゲーム一覧
 	r.GET("/games", func(c *gin.Context) {
 		var games []typefile.Game
 		result := db.Find(&games)
@@ -217,6 +295,7 @@ func main() {
 		c.JSON(200, games)
 	})
 
+	// 所属一覧
 	r.GET("/regions", func(c *gin.Context) {
 		var regions []typefile.Region
 		result := db.Find(&regions)
