@@ -30,19 +30,6 @@ func main() {
 	db := mysql.SqlConnect()
 	rdb := redisClient.RedisConnect()
 
-	// rdb.Set(ctx, "test", "Hello, Redis!", 0)
-
-	// err1 := rdb.Set(ctx, "string", "Hello, Redis v9", 0).Err()
-	// if err1 != nil {
-	// 	log.Fatalf("Could not set key: %v", err1)
-	// }
-
-	// listVal := []string{"val1", "va2", "val3"}
-	// err2 := rdb.LPush(ctx, "array", listVal).Err()
-	// if err2 != nil {
-	// 	log.Fatalf("Could not set key: %v", err2)
-	// }
-
 	// db.AutoMigrate().DropTable(&typefile.Region{}, &typefile.User{}, &typefile.Team{}, &typefile.GameEntry{}, &typefile.GameScore{}, &typefile.Game{})
 	db.AutoMigrate(&typefile.Region{}, &typefile.User{}, &typefile.Team{}, &typefile.GameEntry{}, &typefile.GameScore{}, &typefile.Game{})
 	mysql.Seed(db)
@@ -51,41 +38,6 @@ func main() {
 	r := gin.Default()
 
 	r.GET("/", func(c *gin.Context) {
-		// resultString, err1 := rdb.Get(ctx, "string").Result()
-		// if err1 != nil {
-		// 	c.JSON(400, gin.H{
-		// 		"message": "error",
-		// 	})
-		// }
-
-		// resultArray, err2 := rdb.LRange(ctx, "array", 0, -1).Result()
-		// if err2 != nil {
-		// 	c.JSON(400, gin.H{
-		// 		"message": "error",
-		// 	})
-		// }
-
-		// resultSet, err3 := rdb.SMembers(ctx, "set").Result()
-		// if err3 != nil {
-		// 	c.JSON(400, gin.H{
-		// 		"message": "error",
-		// 	})
-		// }
-
-		// resultMysortedset, err4 := rdb.ZRevRangeWithScores(ctx, "mysortedset", 0, -1).Result()
-		// if err4 != nil {
-		// 	c.JSON(400, gin.H{
-		// 		"message": "error",
-		// 	})
-		// }
-
-		// c.JSON(200, gin.H{
-		// 	"resultString":      resultString,
-		// 	"resultArray":       resultArray,
-		// 	"resultSet":         resultSet,
-		// 	"resultMysortedset": resultMysortedset,
-		// })
-
 		c.JSON(200, gin.H{
 			"message": "Hello, World!",
 		})
