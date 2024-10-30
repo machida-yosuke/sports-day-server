@@ -26,12 +26,35 @@ type JsonRequest struct {
 
 func Seed(db *gorm.DB, rdb *redis.Client) {
 	var ctx = context.Background()
-	regions := []string{
-		"所属A",
-		"所属B",
-		"所属C",
-		"所属D",
-		"所属E",
+	regions := []typefile.Region{
+		{
+			Name:     "所属A",
+			Hiragana: "しょぞくA",
+			Katakana: "ショゾクA",
+			Alphabet: "shozokuA",
+			Place:    "placeA",
+		},
+		{
+			Name:     "所属B",
+			Hiragana: "しょぞくB",
+			Katakana: "ショゾクB",
+			Alphabet: "shozokuB",
+			Place:    "placeB",
+		},
+		{
+			Name:     "所属C",
+			Hiragana: "しょぞくC",
+			Katakana: "ショゾクC",
+			Alphabet: "shozokuC",
+			Place:    "placeC",
+		},
+		{
+			Name:     "所属D",
+			Hiragana: "しょぞくD",
+			Katakana: "ショゾクD",
+			Alphabet: "shozokuD",
+			Place:    "placeD",
+		},
 	}
 
 	games := []string{
@@ -49,7 +72,7 @@ func Seed(db *gorm.DB, rdb *redis.Client) {
 		if count > 0 {
 			continue
 		}
-		db.Create(&typefile.Region{Name: region})
+		db.Create(&typefile.Region{Name: region.Name, Hiragana: region.Hiragana, Katakana: region.Katakana, Alphabet: region.Alphabet, Place: region.Place})
 	}
 
 	// ゲームの登録

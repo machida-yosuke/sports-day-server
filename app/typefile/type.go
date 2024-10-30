@@ -4,8 +4,22 @@ import "github.com/jinzhu/gorm"
 
 type Region struct {
 	gorm.Model
-	Name  string
-	Teams []Team `gorm:"foreignKey:RegionID"`
+	Name     string
+	Hiragana string
+	Katakana string
+	Alphabet string
+	Place    string
+	Teams    []Team `gorm:"foreignKey:RegionID"`
+}
+
+type Team struct {
+	gorm.Model
+	Name        string
+	Uuid        string
+	RegionID    uint
+	Region      Region
+	Users       []User
+	GameEntries []GameEntry
 }
 
 type User struct {
@@ -15,24 +29,14 @@ type User struct {
 	Team   Team
 }
 
-type Team struct {
-	gorm.Model
-	Name        string
-	Uuid        string
-	RegionID    uint
-	Region      Region
-	Users       []User      `gorm:"foreignKey:TeamID"`
-	GameEntries []GameEntry `gorm:"foreignKey:TeamID"`
-}
-
 type GameEntry struct {
 	gorm.Model
 	TeamID      uint `gorm:"index"`
-	Team        Team `gorm:"foreignKey:TeamID"`
+	Team        Team
 	GameID      uint `gorm:"index"`
-	Game        Game `gorm:"foreignKey:GameID"`
+	Game        Game
 	GameScoreID uint
-	GameScore   GameScore `gorm:"foreignKey:GameScoreID"`
+	GameScore   GameScore
 }
 
 type GameScore struct {
@@ -82,4 +86,9 @@ type GameRank struct {
 	GameID uint `json:"game_id"`
 	Score  uint `json:"score"`
 	Rank   uint `json:"rank"`
+}
+
+type Pagination struct {
+	Offset int
+	Limit  int
 }

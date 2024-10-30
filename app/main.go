@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,32 +31,17 @@ func main() {
 	db := mysql.SqlConnect()
 	rdb := redisClient.RedisConnect()
 
+	// データ削除
 	// db.AutoMigrate().DropTable(&typefile.Region{}, &typefile.User{}, &typefile.Team{}, &typefile.GameEntry{}, &typefile.GameScore{}, &typefile.Game{})
+	// rdb.FlushAll(ctx)
+
 	db.AutoMigrate(&typefile.Region{}, &typefile.User{}, &typefile.Team{}, &typefile.GameEntry{}, &typefile.GameScore{}, &typefile.Game{})
 	seed.Seed(db, rdb)
 	defer db.Close()
 
 	r := gin.Default()
-
-	r.GET("/", func(c *gin.Context) {
-		resultGame1, _ := rdb.ZRevRangeWithScores(ctx, "game1", 0, -1).Result()
-		resultGame2, _ := rdb.ZRevRangeWithScores(ctx, "game2", 0, -1).Result()
-		resultGame3, _ := rdb.ZRevRangeWithScores(ctx, "game3", 0, -1).Result()
-		resultGame4, _ := rdb.ZRevRangeWithScores(ctx, "game4", 0, -1).Result()
-		resultTotal, _ := rdb.ZRevRangeWithScores(ctx, "total", 0, -1).Result()
-		regionTop10TeamsTotalScore, _ := rdb.ZRevRangeWithScores(ctx, "region-top-10-teams-total-score", 0, -1).Result()
-
-		c.JSON(200, gin.H{
-			"regionTop10TeamsTotalScore": regionTop10TeamsTotalScore,
-			"resultGame1":                resultGame1,
-			"resultGame2":                resultGame2,
-			"resultGame3":                resultGame3,
-			"resultGame4":                resultGame4,
-			"resultTotal":                resultTotal,
-		})
-	})
-
-	r.POST("/teams", func(c *gin.Context) {
+	// チームの作成
+	r.POST("/api/v1/teams", func(c *gin.Context) {
 		node, err := snowflake.NewNode(1)
 		if err != nil {
 			panic(err)
@@ -94,7 +80,8 @@ func main() {
 		c.JSON(200, team)
 	})
 
-	r.GET("/teams/:uuid", func(c *gin.Context) {
+	// チームの取得
+	r.GET("/api/v1/teams/:uuid", func(c *gin.Context) {
 		var team typefile.Team
 		teamResult := db.Preload("Users").Where("uuid = ?", c.Param("uuid")).First(&team)
 
@@ -109,14 +96,19 @@ func main() {
 	})
 
 	// ゲーム結果の送信
-	r.POST("/teams/:uuid/result", func(c *gin.Context) {
+	r.POST("/api/v1/teams/:uuid/result", func(c *gin.Context) {
 		var json typefile.ResultCreateJsonRequest
 
 		var team typefile.Team
-		teamResult := db.Preload("Users").Where("uuid = ?", c.Param("uuid")).First(&team)
+		teamResult := db.Preload("Users").Preload("Region").Preload("GameEntries.GameScore").Where("uuid = ?", c.Param("uuid")).First(&team)
 
 		if errors.Is(teamResult.Error, gorm.ErrRecordNotFound) {
 			c.JSON(404, gin.H{"code": "1000", "message": "team Not Found"})
+			return
+		}
+		// すでに結果が送信されている場合はエラー
+		if len(team.GameEntries) > 0 {
+			c.JSON(400, gin.H{"error": "already sent"})
 			return
 		}
 
@@ -124,6 +116,7 @@ func main() {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
+
 		currentTime := time.Now().Unix()
 		for _, entry := range json.Entries {
 			gameScore := typefile.GameScore{
@@ -181,7 +174,7 @@ func main() {
 	})
 
 	// チームの結果取得
-	r.GET("/teams/:uuid/result", func(c *gin.Context) {
+	r.GET("/api/v1/teams/:uuid/result", func(c *gin.Context) {
 		var team typefile.Team
 		teamResult := db.Preload("Users").Preload("Region").Preload("GameEntries.GameScore").Where("uuid = ?", c.Param("uuid")).First(&team)
 
@@ -274,7 +267,7 @@ func main() {
 	})
 
 	// ゲーム一覧
-	r.GET("/games", func(c *gin.Context) {
+	r.GET("/api/v1/games", func(c *gin.Context) {
 		var games []typefile.Game
 		result := db.Find(&games)
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
@@ -286,7 +279,7 @@ func main() {
 	})
 
 	// 所属一覧
-	r.GET("/regions", func(c *gin.Context) {
+	r.GET("/api/v1/regions", func(c *gin.Context) {
 		var regions []typefile.Region
 		result := db.Find(&regions)
 
@@ -296,6 +289,106 @@ func main() {
 		}
 
 		c.JSON(200, regions)
+	})
+
+	// ======= admin用 =======
+	r.GET("/api/v1/admin/", func(c *gin.Context) {
+		resultGame1, _ := rdb.ZRevRangeWithScores(ctx, "game1", 0, -1).Result()
+		resultGame2, _ := rdb.ZRevRangeWithScores(ctx, "game2", 0, -1).Result()
+		resultGame3, _ := rdb.ZRevRangeWithScores(ctx, "game3", 0, -1).Result()
+		resultGame4, _ := rdb.ZRevRangeWithScores(ctx, "game4", 0, -1).Result()
+		resultTotal, _ := rdb.ZRevRangeWithScores(ctx, "total", 0, -1).Result()
+		regionTop10TeamsTotalScore, _ := rdb.ZRevRangeWithScores(ctx, "region-top-10-teams-total-score", 0, -1).Result()
+
+		c.JSON(200, gin.H{
+			"regionTop10TeamsTotalScore": regionTop10TeamsTotalScore,
+			"resultGame1":                resultGame1,
+			"resultGame2":                resultGame2,
+			"resultGame3":                resultGame3,
+			"resultGame4":                resultGame4,
+			"resultTotal":                resultTotal,
+		})
+	})
+
+	// すべてのチームを取得
+	r.GET("/api/v1/admin/teams", func(c *gin.Context) {
+		var teams []typefile.Team
+		perPage := 3
+		pageStr := c.Query("page")
+		page, err := strconv.Atoi(pageStr)
+		if err != nil {
+			page = 1
+		}
+
+		pagination := typefile.Pagination{
+			Offset: (page - 1) * perPage,
+			Limit:  perPage,
+		}
+
+		result := db.Preload("Users").Preload("Region").Preload("GameEntries.GameScore").Order("id asc").Offset(pagination.Offset).Limit(pagination.Limit).Find(&teams)
+
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			c.JSON(404, gin.H{"code": "1000", "message": "teams Not Found"})
+			return
+		}
+
+		c.JSON(200, teams)
+	})
+
+	r.GET("/api/v1/admin/regions", func(c *gin.Context) {
+		var regions []typefile.Region
+		perPage := 3
+		pageStr := c.Query("page")
+		page, err := strconv.Atoi(pageStr)
+		if err != nil {
+			page = 1
+		}
+
+		pagination := typefile.Pagination{
+			Offset: (page - 1) * perPage,
+			Limit:  perPage,
+		}
+
+		result := db.Order("id asc").Offset(pagination.Offset).Limit(pagination.Limit).Find(&regions)
+
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			c.JSON(404, gin.H{"code": "1000", "message": "regions Not Found"})
+			return
+		}
+
+		c.JSON(200, regions)
+	})
+
+	// チームの削除
+	r.DELETE("/api/v1/admin/teams/:uuid", func(c *gin.Context) {
+		var team typefile.Team
+		teamResult := db.Where("uuid = ?", c.Param("uuid")).First(&team)
+
+		if errors.Is(teamResult.Error, gorm.ErrRecordNotFound) {
+			c.JSON(404, gin.H{"code": "1000", "message": "team Not Found"})
+			return
+		}
+
+		db.Delete(&team)
+		c.JSON(200, "success")
+	})
+	// ゲーム結果の更新
+	r.PUT("/api/v1/admin/teams/:uuid/result", func(c *gin.Context) {})
+
+	// ゲームの作成
+	r.POST("/api/v1/admin/games", func(c *gin.Context) {
+	})
+
+	// ゲームの削除
+	r.DELETE("/api/v1/admin/games", func(c *gin.Context) {
+	})
+
+	// 所属の作成
+	r.POST("/api/v1/admin/regions", func(c *gin.Context) {
+	})
+
+	// 所属の削除
+	r.DELETE("/api/v1/admin/regions", func(c *gin.Context) {
 	})
 
 	r.Run(":8080")
