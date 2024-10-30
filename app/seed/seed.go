@@ -127,10 +127,39 @@ func Seed(db *gorm.DB, rdb *redis.Client) {
 			totalHelperCount += entry.GameScore.HelperCount
 		}
 
+		// チームランキング用のスコアを登録
 		customScore := calculateCustomScore(totalScore, totalHelperCount, currentTime.Unix())
 		err := rdb.ZAdd(ctx, "total", redis.Z{
 			Score:  customScore,
 			Member: team.Uuid,
+		}).Err()
+		if err != nil {
+			fmt.Println("redis error" + err.Error())
+		}
+
+		// リージョンのチームの上位１０チームのスコア用のスコアを登録
+		err = rdb.ZAdd(ctx, "region-"+fmt.Sprint(region.ID)+"-teams-total-score", redis.Z{
+			Score:  float64(totalScore),
+			Member: team.Uuid,
+		}).Err()
+		if err != nil {
+			fmt.Println("redis error" + err.Error())
+		}
+
+		// リージョンのチーム上位10チームのスコアを取得
+		regionTeamTotalScore := uint(0)
+		teamsScore, errTotal := rdb.ZRevRangeWithScores(ctx, "region-"+fmt.Sprint(team.RegionID)+"-teams-total-score", 0, 10).Result()
+		if errTotal != nil {
+			fmt.Println("redis error" + err.Error())
+		}
+		for _, teamScore := range teamsScore {
+			regionTeamTotalScore += uint(teamScore.Score)
+		}
+
+		// リージョンのチーム全員のスコアを登録
+		err = rdb.ZAdd(ctx, "region-top-10-teams-total-score", redis.Z{
+			Score:  float64(regionTeamTotalScore),
+			Member: team.RegionID,
 		}).Err()
 		if err != nil {
 			fmt.Println("redis error" + err.Error())

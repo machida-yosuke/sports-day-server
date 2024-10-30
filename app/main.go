@@ -38,42 +38,20 @@ func main() {
 	r := gin.Default()
 
 	r.GET("/", func(c *gin.Context) {
-		resultGame1, err1 := rdb.ZRevRangeWithScores(ctx, "game1", 0, -1).Result()
-		resultGame2, err2 := rdb.ZRevRangeWithScores(ctx, "game2", 0, -1).Result()
-		resultGame3, err3 := rdb.ZRevRangeWithScores(ctx, "game3", 0, -1).Result()
-		resultGame4, err4 := rdb.ZRevRangeWithScores(ctx, "game4", 0, -1).Result()
-		resultTotal, errTotal := rdb.ZRevRangeWithScores(ctx, "total", 0, -1).Result()
-		if err1 != nil {
-			c.JSON(400, gin.H{
-				"message": "error",
-			})
-		}
-		if err2 != nil {
-			c.JSON(400, gin.H{
-				"message": "error",
-			})
-		}
-		if err3 != nil {
-			c.JSON(400, gin.H{
-				"message": "error",
-			})
-		}
-		if err4 != nil {
-			c.JSON(400, gin.H{
-				"message": "error",
-			})
-		}
-		if errTotal != nil {
-			c.JSON(400, gin.H{
-				"message": "error",
-			})
-		}
+		resultGame1, _ := rdb.ZRevRangeWithScores(ctx, "game1", 0, -1).Result()
+		resultGame2, _ := rdb.ZRevRangeWithScores(ctx, "game2", 0, -1).Result()
+		resultGame3, _ := rdb.ZRevRangeWithScores(ctx, "game3", 0, -1).Result()
+		resultGame4, _ := rdb.ZRevRangeWithScores(ctx, "game4", 0, -1).Result()
+		resultTotal, _ := rdb.ZRevRangeWithScores(ctx, "total", 0, -1).Result()
+		regionTop10TeamsTotalScore, _ := rdb.ZRevRangeWithScores(ctx, "region-top-10-teams-total-score", 0, -1).Result()
+
 		c.JSON(200, gin.H{
-			"resultGame1": resultGame1,
-			"resultGame2": resultGame2,
-			"resultGame3": resultGame3,
-			"resultGame4": resultGame4,
-			"resultTotal": resultTotal,
+			"regionTop10TeamsTotalScore": regionTop10TeamsTotalScore,
+			"resultGame1":                resultGame1,
+			"resultGame2":                resultGame2,
+			"resultGame3":                resultGame3,
+			"resultGame4":                resultGame4,
+			"resultTotal":                resultTotal,
 		})
 	})
 
@@ -146,9 +124,7 @@ func main() {
 			c.JSON(400, gin.H{"error": err.Error()})
 			return
 		}
-
 		currentTime := time.Now().Unix()
-
 		for _, entry := range json.Entries {
 			gameScore := typefile.GameScore{
 				Score:       entry.Score,
@@ -224,6 +200,7 @@ func main() {
 			totalScore += entry.GameScore.Score + entry.GameScore.HelpScore
 		}
 
+		// 全チームのランキングを取得
 		resultTotal, errTotal := rdb.ZRevRangeWithScores(ctx, "total", 0, -1).Result()
 		if errTotal != nil {
 			c.JSON(400, gin.H{
@@ -239,6 +216,7 @@ func main() {
 			}
 		}
 
+		// ゲームごとのランキングを取得
 		gameRanks := []typefile.GameRank{}
 		for _, entry := range team.GameEntries {
 			key := "game" + fmt.Sprint(entry.GameID)
@@ -264,15 +242,34 @@ func main() {
 			gameRanks = append(gameRanks, gameRank)
 		}
 
+		regionsTotalScore, errRegionsTotalScore := rdb.ZRevRangeWithScores(ctx, "region-top-10-teams-total-score", 0, -1).Result()
+		if errRegionsTotalScore != nil {
+			c.JSON(400, gin.H{
+				"message": "error",
+			})
+		}
+		enteredRegionCountInCompetition := uint(len(regionsTotalScore))
+
+		top10TeamsScoreRankByRegion := uint(0)
+		for i, result := range regionsTotalScore {
+			if result.Member == fmt.Sprint(team.RegionID) {
+				top10TeamsScoreRankByRegion = uint(i + 1)
+				break
+			}
+		}
+
 		var json typefile.ResultJsonResponse
 		json.TeamID = team.ID
+		json.RegionID = team.RegionID
 		json.RegionName = team.Region.Name
 		json.UserNames = names
 		json.TeamUuid = team.Uuid
 		json.TotalScore = totalScore
 		json.TeamRank = teamRank
+		json.ALLTeamCount = uint(len(resultTotal))
 		json.GameRanks = gameRanks
-
+		json.Top10TeamsScoreRankByRegion = top10TeamsScoreRankByRegion
+		json.EnteredRegionCountInCompetition = enteredRegionCountInCompetition
 		c.JSON(200, json)
 	})
 

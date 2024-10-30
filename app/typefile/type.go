@@ -65,17 +65,17 @@ type GameEntryJson struct {
 
 type ResultJsonResponse struct {
 	TeamID     uint   `json:"team_id"`
+	RegionID   uint   `json:"region_id"`
 	TeamUuid   string `json:"team_uuid"`
 	RegionName string `json:"region_name"`
 
-	UserNames  []string   `json:"user_names"`
-	TotalScore uint       `json:"total_score"`
-	TeamRank   uint       `json:"team_rank"`
-	GameRanks  []GameRank `json:"game_ranks"`
-
-	RegionTotalUserCount            uint `json:"region_total_user_count"`
-	Top10TeamsScoreRankingByRegion  uint `json:"top10_teams_score_ranking_by_region"`
-	EnteredRegionCountInCompetition uint `json:"entered_region_count_in_competition"`
+	UserNames                       []string   `json:"user_names"`
+	TotalScore                      uint       `json:"total_score"`
+	TeamRank                        uint       `json:"team_rank"`
+	ALLTeamCount                    uint       `json:"all_team_count"`
+	GameRanks                       []GameRank `json:"game_ranks"`
+	Top10TeamsScoreRankByRegion     uint       `json:"top10_teams_score_rank_by_region"`
+	EnteredRegionCountInCompetition uint       `json:"entered_region_count_in_competition"`
 }
 
 type GameRank struct {
